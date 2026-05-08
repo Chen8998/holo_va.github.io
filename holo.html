@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>全息粒子 3D 模型 - 手势交互</title>
+    <style>
+        body {
+            margin: 0; padding: 0; overflow: hidden; background-color: #030305;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            touch-action: none;
+        }
+        #canvas-container { width: 100vw; height: 100vh; }
+
+        /* 左侧 UI 控制面板 */
+        #ui-overlay {
+            position: absolute; top: 20px; left: 20px; z-index: 10;
+            color: #fff; pointer-events: none;
+        }
+        .status-card {
+            background: rgba(15, 15, 20, 0.7); backdrop-filter: blur(12px);
+            padding: 20px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 15px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            pointer-events: auto; width: 220px;
+        }
+        .status-item { margin: 8px 0; font-size: 14px; display: flex; justify-content: space-between; }
+        .status-value { color: #ffaa00; font-weight: bold; }
+
+        /* 新增：内置图库样式 */
+        .gallery-title { font-size: 14px; color: #ccc; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;}
+        .preset-container {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px;
+        }
+        .preset-img {
+            width: 100%; aspect-ratio: 1; border-radius: 8px;
+            border: 2px solid transparent; cursor: pointer;
+            object-fit: cover; transition: all 0.3s ease; opacity: 0.6;
+        }
+        .preset-img:hover { opacity: 1; transform: scale(1.05); }
+        .preset-img.active { opacity: 1; border-color: #ffaa00; box-shadow: 0 0 10px rgba(255, 170, 0, 0.5); }
+
+        /* 右上角与右下角控件 */
+        .action-group {
+            position: absolute; top: 20px; right: 20px; z-index: 20;
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .btn {
+            background: rgba(15, 15, 20, 0.7); color: white; border: 1px solid rgba(255, 170, 0, 0.5);
+            padding: 10px 18px; border-radius: 50px; font-size: 14px; cursor: pointer;
+            backdrop-filter: blur(10px); transition: all 0.3s ease; display: flex; align-items: center; justify-content: center;
+        }
+        .btn.primary { background: linear-gradient(135deg, #ff8800, #ffaa00); border: none; box-shadow: 0 4px 15px rgba(255, 170, 0, 0.4); }
+        .btn:hover { transform: scale(1.05); }
+        #imageUpload { display: none; }
+
+        #video-container {
+            position: absolute; bottom: 20px; right: 20px; width: 160px; height: 120px;
+            border-radius: 12px; overflow: hidden; border: 2px solid rgba(255, 170, 0, 0.5);
+            transform: scaleX(-1); background: #111; box-shadow: 0 4px 15px rgba(255, 170, 0, 0.2); z-index: 10;
+        }
+        #webcam-video { width: 100%; height: 100%; object-fit: cover; }
+
+        /* 加载与弹窗 */
+        .loader {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #ffaa00; text-align: center; z-index: 100; background: rgba(0,0,0,0.8);
+            padding: 30px; border-radius: 20px; backdrop-filter: blur(5px); display: none;
+        }
+        .loader-spinner {
+            border: 4px solid rgba(255, 170, 0, 0.1); border-left-color: #ffaa00;
+            border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto 15px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(8px); z-index: 999;
+            justify-content: center; align-items: center; flex-direction: column;
+        }
+        .qr-card { background: white; padding: 30px; border-radius: 20px; text-align: center; color: #333; }
+        .warning-text { color: #d93025; font-size: 12px; margin-top: 15px; background: #fce8e6; padding: 10px; border-radius: 8px; display: none; }
+
+        /* 新增：手机端“扫码上传图片”页面（仅在 role=sender 时显示） */
+        #mobileUploadPage {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: radial-gradient(circle at top, rgba(255,170,0,0.12), rgba(3,3,5,1) 55%);
+            color: #fff;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+        #mobileUploadCard {
+            width: min(420px, 100%);
+            background: rgba(15, 15, 20, 0.75);
+            border: 1px solid rgba(255, 170, 0, 0.35);
+            border-radius: 18px;
+            padding: 22px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+        }
+        #mobileUploadCard h2 { margin: 0 0 10px 0; font-size: 18px; color: #ffaa00; }
+        #mobileUploadHint { font-size: 13px; color: rgba(255,255,255,0.78); line-height: 1.55; margin-bottom: 16px; }
+        #mobileUploadStatus { font-size: 13px; margin-top: 14px; color: rgba(255,255,255,0.85); }
+        #mobileImageUpload { display: none; }
+        #mobilePickBtn { width: 100%; }
+
+        @media (max-width: 768px) {
+            #ui-overlay { transform: scale(0.85); transform-origin: top left; }
+            .action-group { flex-direction: row; top: auto; bottom: 150px; right: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loader" class="loader"><div class="loader-spinner"></div><p id="loader-text">正在处理...</p></div>
+
+    <div class="modal-overlay" id="qrModal">
+        <div class="qr-card">
+            <h3>📱 手机扫码体验</h3><div id="qrcode" style="margin: 20px auto; display: flex; justify-content: center;"></div>
+            <div id="qrWarning" class="warning-text">⚠️ 需 HTTPS 环境才可调起手机摄像头。</div>
+            <button style="padding: 8px 24px; margin-top: 15px; border-radius: 20px; border:none; cursor:pointer;" onclick="document.getElementById('qrModal').style.display='none'">关闭</button>
+        </div>
+    </div>
+
+    <!-- 新增：扫码上传图片弹窗 -->
+    <div class="modal-overlay" id="qrUploadModal">
+        <div class="qr-card">
+            <h3>📤 扫码上传图片</h3>
+            <div style="font-size: 12px; color: #666; line-height: 1.5;">
+                用手机扫码打开后，从手机本地选择图片上传到当前页面。
+            </div>
+            <div id="qrcodeUpload" style="margin: 18px auto 12px auto; display: flex; justify-content: center;"></div>
+            <div id="uploadStatus" style="font-size: 12px; color: #444; line-height: 1.5; min-height: 18px;">等待手机上传…</div>
+            <div id="uploadWarning" class="warning-text" style="display:none;">⚠️ 需联网才可使用扫码上传（通过公共消息中转服务传输图片）。</div>
+            <button style="padding: 8px 24px; margin-top: 15px; border-radius: 20px; border:none; cursor:pointer;" onclick="closeUploadModal()">关闭</button>
+        </div>
+    </div>
+
+    <!-- 新增：手机端上传页面（仅扫码链接打开时显示） -->
+    <div id="mobileUploadPage">
+        <div id="mobileUploadCard">
+            <h2>📤 上传图片到大屏</h2>
+            <div id="mobileUploadHint">
+                点击下方按钮选择一张手机本地图片，上传完成后大屏会自动生成 3D 粒子模型。
+            </div>
+            <button class="btn primary" id="mobilePickBtn" onclick="document.getElementById('mobileImageUpload').click()">选择图片并上传</button>
+            <input type="file" id="mobileImageUpload" accept="image/png, image/jpeg, image/jpg">
+            <div id="mobileUploadStatus">等待选择图片…</div>
+        </div>
+    </div>
+
+    <div class="action-group">
+        <button class="btn" id="musicBtn" onclick="toggleMusic()">🎵 播放音乐</button>
+        <button class="btn" onclick="showQRModal()">📱 手机扫码</button>
+        <!-- 新增：扫码上传图片 -->
+        <button class="btn" onclick="showUploadQRModal()">📤 扫码上传图片</button>
+        <button class="btn primary" onclick="document.getElementById('imageUpload').click()">📷 上传照片</button>
+        <input type="file" id="imageUpload" accept="image/png, image/jpeg, image/jpg">
+    </div>
+
+    <div id="ui-overlay">
+        <div class="status-card">
+            <h2 style="margin: 0 0 15px 0; color: #ffaa00; font-size: 18px;">全息控制器</h2>
+            <div class="status-item"><span>手势:</span> <span class="status-value" id="gesture-type">等待中...</span></div>
+            <div class="status-item"><span>距离:</span> <span class="status-value" id="zoom-speed">0</span></div>
+            <div class="status-item"><span>角度:</span> <span class="status-value" id="rotation-val">0°</span></div>
+
+            <div style="margin-top: 20px;">
+                <div class="gallery-title">✨ 内置全息图库</div>
+                <div class="preset-container" id="preset-gallery">
+                    </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="video-container"><video id="webcam-video" autoplay playsinline></video></div>
+    <div id="canvas-container"></div>
+    <audio id="bgm" loop><source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg"></audio>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- 新增：用于扫码上传图片的 MQTT 客户端（纯前端，无需改动后端） -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+    <script type="importmap">{"imports": {"three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js"}}</script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- 预设图像数据 ---
+        const PRESETS = [
+            { id: 'cat', url: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80' },
+            { id: 'statue', url: 'https://images.unsplash.com/photo-1618666012174-83b441c0bc76?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80' },
+            { id: 'neon', url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80' },
+            { id: 'flower', url: 'https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?q=80&w=627&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'}
+        ];
+
+        const isMobile = window.innerWidth < 768;
+        const MODEL_PARTICLES = isMobile ? 60000 : 120000;
+        const RING_PARTICLES = isMobile ? 2500 : 5000;
+        const MIN_CAMERA_DIST = 20; const MAX_CAMERA_DIST = 120;
+
+        let scene, camera, renderer, mainGroup, modelParticles, ring1, ring2, videoElement, hands;
+        let currentDistance = 60, targetRotation = 0, currentRotation = 0;
+
+        // 音乐控制
+        let isPlaying = false;
+        window.toggleMusic = function() {
+            const bgm = document.getElementById('bgm');
+            const btn = document.getElementById('musicBtn');
+            if (isPlaying) { bgm.pause(); btn.innerText = "🎵 播放音乐"; btn.style.background = "rgba(15, 15, 20, 0.7)"; }
+            else { bgm.play(); btn.innerText = "⏸️ 暂停音乐"; btn.style.background = "rgba(255, 170, 0, 0.3)"; }
+            isPlaying = !isPlaying;
+        };
+
+        window.showQRModal = function() {
+            const m = document.getElementById('qrModal'); const q = document.getElementById('qrcode');
+            q.innerHTML = ''; const url = window.location.href;
+            new QRCode(q, { text: url, width: 160, height: 160, colorDark : "#000", colorLight : "#fff" });
+            document.getElementById('qrWarning').style.display = (url.startsWith('http://') && !url.includes('localhost')) ? 'block' : 'none';
+            m.style.display = 'flex';
+        };
+
+        // ==============================
+        // 新增：扫码上传图片（不改动现有模型/交互逻辑，只复用 build3DModelFromImage）
+        // ==============================
+        const MQTT_BROKER_URL = 'wss://broker.emqx.io:8084/mqtt';
+        const MQTT_TOPIC_PREFIX = 'solo-holo-upload/v1/';
+        const UPLOAD_CHUNK_SIZE = 45000; // base64 字符串分片大小（尽量避免单条消息过大）
+
+        let uploadReceiver = null;
+
+        function genSessionId() {
+            const bytes = new Uint8Array(12);
+            crypto.getRandomValues(bytes);
+            return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function buildUploadUrl(sessionId) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('uploadSession', sessionId);
+            url.searchParams.set('role', 'sender');
+            return url.toString();
+        }
+
+        function setUploadStatus(text) {
+            const el = document.getElementById('uploadStatus');
+            if (el) el.innerText = text;
+        }
+
+        window.closeUploadModal = function() {
+            document.getElementById('qrUploadModal').style.display = 'none';
+        };
+
+        window.showUploadQRModal = function() {
+            const modal = document.getElementById('qrUploadModal');
+            const q = document.getElementById('qrcodeUpload');
+            q.innerHTML = '';
+            setUploadStatus('等待手机上传…');
+            document.getElementById('uploadWarning').style.display = 'none';
+
+            const sessionId = genSessionId();
+            const url = buildUploadUrl(sessionId);
+            new QRCode(q, { text: url, width: 180, height: 180, colorDark : "#000", colorLight : "#fff" });
+            modal.style.display = 'flex';
+
+            // 启动接收端监听（桌面端当前页）
+            startUploadReceiver(sessionId).catch((err) => {
+                console.error(err);
+                setUploadStatus('启动接收失败，请检查网络。');
+                document.getElementById('uploadWarning').style.display = 'block';
+            });
+        };
+
+        async function connectMqttClient(clientId) {
+            if (!window.mqtt || !window.mqtt.connect) throw new Error('mqtt 库未加载');
+
+            const client = window.mqtt.connect(MQTT_BROKER_URL, {
+                clientId,
+                clean: true,
+                reconnectPeriod: 1500,
+                connectTimeout: 8000
+            });
+
+            await new Promise((resolve, reject) => {
+                const onConnect = () => { cleanup(); resolve(); };
+                const onError = (e) => { cleanup(); reject(e); };
+                const cleanup = () => {
+                    client.off('connect', onConnect);
+                    client.off('error', onError);
+                };
+                client.on('connect', onConnect);
+                client.on('error', onError);
+            });
+
+            return client;
+        }
+
+        async function mqttPublish(client, topic, payload) {
+            return new Promise((resolve, reject) => {
+                client.publish(topic, payload, { qos: 0 }, (err) => err ? reject(err) : resolve());
+            });
+        }
+
+        async function startUploadReceiver(sessionId) {
+            // 若已存在接收会话，先清理
+            if (uploadReceiver && uploadReceiver.client) {
+                try { uploadReceiver.client.end(true); } catch (e) {}
+            }
+
+            setUploadStatus('正在建立连接…');
+            const topic = MQTT_TOPIC_PREFIX + sessionId;
+            const client = await connectMqttClient('holo-receiver-' + genSessionId());
+
+            uploadReceiver = {
+                sessionId,
+                topic,
+                client,
+                meta: null,
+                chunks: null,
+                received: 0,
+                startedAt: Date.now()
+            };
+
+            client.subscribe(topic, { qos: 0 });
+
+            client.on('message', async (_topic, message) => {
+                if (_topic !== topic) return;
+                let data;
+                try { data = JSON.parse(message.toString()); } catch (e) { return; }
+                if (!data || !data.t) return;
+
+                if (data.t === 'meta') {
+                    uploadReceiver.meta = data;
+                    uploadReceiver.chunks = new Array(data.totalChunks || 0);
+                    uploadReceiver.received = 0;
+                    setUploadStatus(`已连接，开始接收：${data.name || '图片'}…`);
+                    return;
+                }
+
+                if (data.t === 'chunk' && uploadReceiver.chunks) {
+                    const idx = data.idx;
+                    if (typeof idx !== 'number') return;
+                    if (!uploadReceiver.chunks[idx]) {
+                        uploadReceiver.chunks[idx] = data.data || '';
+                        uploadReceiver.received += 1;
+                        const total = uploadReceiver.chunks.length || 1;
+                        const pct = Math.floor((uploadReceiver.received / total) * 100);
+                        setUploadStatus(`接收中… ${pct}%`);
+                    }
+                    if (uploadReceiver.received === uploadReceiver.chunks.length) {
+                        const dataUrl = uploadReceiver.chunks.join('');
+                        setUploadStatus('接收完成，正在生成 3D 粒子模型…');
+                        await handleIncomingImageDataUrl(dataUrl);
+                        setUploadStatus('完成 ✅');
+                        try { client.unsubscribe(topic); client.end(true); } catch (e) {}
+                    }
+                    return;
+                }
+            });
+
+            setUploadStatus('等待手机上传…');
+        }
+
+        async function handleIncomingImageDataUrl(dataUrl) {
+            document.querySelectorAll('.preset-img').forEach(el => el.classList.remove('active')); // 取消内置图高亮
+            document.getElementById('loader').style.display = 'block';
+            document.getElementById('loader-text').innerText = "处理您的照片...";
+            await build3DModelFromImage(dataUrl);
+            document.getElementById('loader').style.display = 'none';
+        }
+
+        function renderMobileSenderUI(sessionId) {
+            // 隐藏原页面元素（仅 role=sender 时）
+            const ag = document.querySelector('.action-group');
+            if (ag) ag.style.display = 'none';
+            const ui = document.getElementById('ui-overlay');
+            if (ui) ui.style.display = 'none';
+            const vc = document.getElementById('video-container');
+            if (vc) vc.style.display = 'none';
+            const cc = document.getElementById('canvas-container');
+            if (cc) cc.style.display = 'none';
+            const loader = document.getElementById('loader');
+            if (loader) loader.style.display = 'none';
+
+            const page = document.getElementById('mobileUploadPage');
+            page.style.display = 'flex';
+
+            const status = document.getElementById('mobileUploadStatus');
+            const input = document.getElementById('mobileImageUpload');
+
+            input.addEventListener('change', async (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (!file) return;
+
+                status.innerText = '读取图片…';
+                const dataUrl = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (evt) => resolve(evt.target.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+
+                status.innerText = '连接中…';
+                const topic = MQTT_TOPIC_PREFIX + sessionId;
+                let client;
+                try {
+                    client = await connectMqttClient('holo-sender-' + genSessionId());
+                } catch (err) {
+                    console.error(err);
+                    status.innerText = '连接失败，请检查网络后重试。';
+                    return;
+                }
+
+                try {
+                    const totalChunks = Math.ceil(dataUrl.length / UPLOAD_CHUNK_SIZE);
+                    await mqttPublish(client, topic, JSON.stringify({
+                        t: 'meta',
+                        name: file.name,
+                        size: file.size,
+                        mime: file.type,
+                        totalChunks
+                    }));
+
+                    status.innerText = '上传中… 0%';
+                    for (let i = 0; i < totalChunks; i++) {
+                        const chunk = dataUrl.slice(i * UPLOAD_CHUNK_SIZE, (i + 1) * UPLOAD_CHUNK_SIZE);
+                        await mqttPublish(client, topic, JSON.stringify({ t: 'chunk', idx: i, data: chunk }));
+                        const pct = Math.floor(((i + 1) / totalChunks) * 100);
+                        status.innerText = `上传中… ${pct}%`;
+                        // 轻微让出主线程，避免移动端页面卡顿
+                        await new Promise(r => setTimeout(r, 5));
+                    }
+
+                    status.innerText = '上传完成 ✅ 你可以返回大屏查看效果。';
+                    try { client.end(true); } catch (e) {}
+                } catch (err) {
+                    console.error(err);
+                    status.innerText = '上传失败，请重试。';
+                    try { client.end(true); } catch (e) {}
+                }
+            });
+        }
+
+        async function init() {
+            document.getElementById('loader').style.display = 'block';
+            document.getElementById('loader-text').innerText = "加载 3D 引擎...";
+
+            scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x030305, 0.005);
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            mainGroup = new THREE.Group(); scene.add(mainGroup);
+
+            initGalleryUI();
+            createRings();
+            createBackgroundStars();
+
+            // 默认加载第一张图
+            await build3DModelFromImage(PRESETS[0].url);
+
+            document.getElementById('loader-text').innerText = "启动摄像头...";
+            setupMediaPipe();
+            setupImageUpload();
+            animate();
+        }
+
+        // 初始化预设图库UI
+        function initGalleryUI() {
+            const container = document.getElementById('preset-gallery');
+            PRESETS.forEach((preset, index) => {
+                const img = document.createElement('img');
+                img.src = preset.url;
+                img.className = index === 0 ? 'preset-img active' : 'preset-img';
+                img.onclick = async () => {
+                    // 更新UI高亮
+                    document.querySelectorAll('.preset-img').forEach(el => el.classList.remove('active'));
+                    img.classList.add('active');
+                    // 加载模型
+                    document.getElementById('loader').style.display = 'block';
+                    document.getElementById('loader-text').innerText = "构建全息图像...";
+                    await build3DModelFromImage(preset.url);
+                    document.getElementById('loader').style.display = 'none';
+                };
+                container.appendChild(img);
+            });
+        }
+
+        async function build3DModelFromImage(imageUrl) {
+            return new Promise((resolve) => {
+                const loader = new THREE.ImageLoader(); loader.setCrossOrigin('anonymous');
+                loader.load(imageUrl, (image) => {
+                    if (modelParticles) { mainGroup.remove(modelParticles); modelParticles.geometry.dispose(); modelParticles.material.dispose(); }
+                    const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                    const aspect = image.width / image.height;
+                    let imgW = 256, imgH = 256;
+                    if (aspect > 1) imgH = Math.floor(256 / aspect); else imgW = Math.floor(256 * aspect);
+                    canvas.width = imgW; canvas.height = imgH; ctx.drawImage(image, 0, 0, imgW, imgH);
+                    const imgData = ctx.getImageData(0, 0, imgW, imgH).data;
+
+                    const positions = []; const colors = []; const scale = 0.15;
+                    for (let i = 0; i < MODEL_PARTICLES; i++) {
+                        const x = Math.floor(Math.random() * imgW); const y = Math.floor(Math.random() * imgH);
+                        const pixelIdx = (y * imgW + x) * 4;
+                        const r = imgData[pixelIdx]/255, g = imgData[pixelIdx+1]/255, b = imgData[pixelIdx+2]/255, a = imgData[pixelIdx+3]/255;
+                        if (r > 0.9 && g > 0.9 && b > 0.9) continue; if (a < 0.1) continue;
+
+                        const px = (x - imgW/2) * scale + (Math.random()-0.5)*0.15;
+                        const py = (imgH/2 - y) * scale + (Math.random()-0.5)*0.15;
+                        const pz = ((0.299*r + 0.587*g + 0.114*b) * 8) - 4 + (Math.random()-0.5)*1.5;
+
+                        positions.push(px, py, pz); colors.push(r*1.5, g*1.5, b*1.5);
+                    }
+                    const geo = new THREE.BufferGeometry();
+                    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                    const mat = new THREE.PointsMaterial({ size: isMobile?0.2:0.12, vertexColors: true, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+                    modelParticles = new THREE.Points(geo, mat); mainGroup.add(modelParticles);
+                    resolve();
+                });
+            });
+        }
+
+        function setupImageUpload() {
+            document.getElementById('imageUpload').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                        document.querySelectorAll('.preset-img').forEach(el => el.classList.remove('active')); // 取消内置图高亮
+                        document.getElementById('loader').style.display = 'block';
+                        document.getElementById('loader-text').innerText = "处理您的照片...";
+                        await build3DModelFromImage(event.target.result);
+                        document.getElementById('loader').style.display = 'none';
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+
+        function createRings() {
+            function create(inner, outer, count, hex) {
+                const geo = new THREE.BufferGeometry(); const pos = [];
+                for (let i=0; i<count; i++) {
+                    const a = Math.random()*Math.PI*2, r = inner+Math.random()*(outer-inner);
+                    pos.push(Math.cos(a)*r, (Math.random()-0.5)*1.5, Math.sin(a)*r);
+                }
+                geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                return new THREE.Points(geo, new THREE.PointsMaterial({size:0.1, color:hex, transparent:true, opacity:0.4, blending:THREE.AdditiveBlending}));
+            }
+            ring1 = create(22, 28, RING_PARTICLES, 0xffccaa); ring2 = create(30, 36, RING_PARTICLES/2, 0x88bbff);
+            ring1.rotation.x = Math.PI/2.5; ring2.rotation.x = -Math.PI/3; mainGroup.add(ring1, ring2);
+        }
+
+        function createBackgroundStars() {
+            const geo = new THREE.BufferGeometry(); const pos = [];
+            for(let i=0; i<2000; i++) pos.push((Math.random()-0.5)*400, (Math.random()-0.5)*400, (Math.random()-0.5)*400);
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+            scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.2, color: 0x555566 })));
+        }
+
+        function setupMediaPipe() {
+            videoElement = document.getElementById('webcam-video');
+            hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+            hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+            hands.onResults((results) => {
+                const elType = document.getElementById('gesture-type');
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    const lm = results.multiHandLandmarks[0];
+                    const isFist = [8,12,16,20].filter(f => lm[f].y > lm[f-2].y).length >= 3;
+                    targetRotation = Math.atan2(lm[9].y - lm[0].y, lm[9].x - lm[0].x) + Math.PI/2;
+
+                    if(isFist) { elType.innerText = "✊ 握拳"; elType.style.color = "#f44"; currentDistance += Math.pow(currentDistance*0.05, 1.5)*0.1; }
+                    else { elType.innerText = "🖐️ 张开"; elType.style.color = "#4f4"; currentDistance -= (currentDistance - MIN_CAMERA_DIST)*0.08; }
+
+                    currentDistance = Math.max(MIN_CAMERA_DIST, Math.min(MAX_CAMERA_DIST, currentDistance));
+                    document.getElementById('zoom-speed').innerText = currentDistance.toFixed(1) + " M";
+                    document.getElementById('rotation-val').innerText = Math.round(targetRotation*180/Math.PI) + "°";
+                } else {
+                    elType.innerText = "未检测"; elType.style.color = "#fa0";
+                }
+            });
+            new Camera(videoElement, { onFrame: async () => await hands.send({ image: videoElement }), width: 640, height: 480 })
+                .start().catch(()=>document.getElementById('loader-text').innerText="无摄像头权限");
+            document.getElementById('loader').style.display = 'none';
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (mainGroup) mainGroup.rotation.y += 0.0005;
+            if (ring1) { ring1.rotation.z += 0.002; ring2.rotation.z -= 0.0015; }
+            currentRotation += (targetRotation - currentRotation) * 0.1;
+            camera.position.set(Math.sin(currentRotation)*currentDistance, currentDistance*0.1, Math.cos(currentRotation)*currentDistance);
+            camera.lookAt(0,0,0); renderer.render(scene, camera);
+        }
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+
+        // 若扫码链接带 role=sender，则显示手机端上传页；否则按原逻辑初始化 3D+手势交互
+        window.onload = () => {
+            const params = new URLSearchParams(window.location.search);
+            const sessionId = params.get('uploadSession');
+            const role = params.get('role');
+            if (sessionId && role === 'sender') {
+                renderMobileSenderUI(sessionId);
+            } else {
+                init();
+            }
+        };
+    </script>
+</body>
+</html>
