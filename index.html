@@ -292,7 +292,8 @@
         // ==============================
         const MQTT_BROKER_URL = 'wss://broker.emqx.io:8084/mqtt';
         const MQTT_TOPIC_PREFIX = 'solo-holo-upload/v1/';
-        const UPLOAD_CHUNK_SIZE = 45000; // base64 字符串分片大小（尽量避免单条消息过大）
+        // base64 字符串分片大小（过大时更容易在移动网络下丢包/阻塞）
+        const UPLOAD_CHUNK_SIZE = 18000;
 
         let uploadReceiver = null;
 
@@ -369,7 +370,8 @@
 
         async function mqttPublish(client, topic, payload) {
             return new Promise((resolve, reject) => {
-                client.publish(topic, payload, { qos: 0 }, (err) => err ? reject(err) : resolve());
+                // 使用 QoS 1 提升可靠性，避免第二次/多次上传时丢分片导致进度卡住
+                client.publish(topic, payload, { qos: 1 }, (err) => err ? reject(err) : resolve());
             });
         }
 
@@ -393,7 +395,7 @@
                 startedAt: Date.now()
             };
 
-            client.subscribe(topic, { qos: 0 });
+            client.subscribe(topic, { qos: 1 });
 
             client.on('message', async (_topic, message) => {
                 if (_topic !== topic) return;
@@ -402,14 +404,31 @@
                 if (!data || !data.t) return;
 
                 if (data.t === 'meta') {
+                    uploadReceiver.lastMessageAt = Date.now();
                     uploadReceiver.meta = data;
                     uploadReceiver.chunks = new Array(data.totalChunks || 0);
                     uploadReceiver.received = 0;
                     setUploadStatus(`已连接，开始接收：${data.name || '图片'}…`);
+
+                    // 简单超时保护：若长时间未收齐分片，提示用户重试，避免一直卡在某个百分比
+                    const timeoutMs = 20000;
+                    const mySessionId = uploadReceiver.sessionId;
+                    setTimeout(() => {
+                        if (!uploadReceiver || uploadReceiver.sessionId !== mySessionId) return;
+                        if (!uploadReceiver.chunks || uploadReceiver.received === uploadReceiver.chunks.length) return;
+                        const idle = Date.now() - (uploadReceiver.lastMessageAt || 0);
+                        if (idle >= timeoutMs) {
+                            setUploadStatus('接收超时，请在手机端重新上传。');
+                            uploadReceiver.meta = null;
+                            uploadReceiver.chunks = null;
+                            uploadReceiver.received = 0;
+                        }
+                    }, timeoutMs + 200);
                     return;
                 }
 
                 if (data.t === 'chunk' && uploadReceiver.chunks) {
+                    uploadReceiver.lastMessageAt = Date.now();
                     const idx = data.idx;
                     if (typeof idx !== 'number') return;
                     if (!uploadReceiver.chunks[idx]) {
@@ -507,11 +526,15 @@
                     }
 
                     status.innerText = '上传完成 ✅ 你可以返回大屏查看效果。';
-                    try { client.end(true); } catch (e) {}
+                    try {
+                        // QoS1 下 publish 回调已收到 PUBACK，但给一点缓冲，避免移动端弱网下被强制断开
+                        await new Promise(r => setTimeout(r, 200));
+                        client.end(false);
+                    } catch (e) {}
                 } catch (err) {
                     console.error(err);
                     status.innerText = '上传失败，请重试。';
-                    try { client.end(true); } catch (e) {}
+                    try { client.end(false); } catch (e) {}
                 } finally {
                     // 允许用户连续选择同一文件触发第二次上传
                     input.value = '';
