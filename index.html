@@ -1,300 +1,247 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>全息粒子 3D 模型 - 手势交互</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Particle - Magnetic Assemble</title>
     <style>
-        body {
-            margin: 0; padding: 0; overflow: hidden; background-color: #030305;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            touch-action: none;
-        }
-        #canvas-container { width: 100vw; height: 100vh; }
-
-        /* 左侧 UI 控制面板 */
-        #ui-overlay {
-            position: absolute; top: 20px; left: 20px; z-index: 10;
-            color: #fff; pointer-events: none;
-        }
-        .status-card {
-            background: rgba(15, 15, 20, 0.7); backdrop-filter: blur(12px);
-            padding: 20px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.1);
-            margin-bottom: 15px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-            pointer-events: auto; width: 220px;
-        }
-        .status-item { margin: 8px 0; font-size: 14px; display: flex; justify-content: space-between; }
-        .status-value { color: #ffaa00; font-weight: bold; }
-
-        /* 新增：内置图库样式 */
-        .gallery-title { font-size: 14px; color: #ccc; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;}
-        .preset-container {
-            display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px;
-        }
-        .preset-img {
-            width: 100%; aspect-ratio: 1; border-radius: 8px;
-            border: 2px solid transparent; cursor: pointer;
-            object-fit: cover; transition: all 0.3s ease; opacity: 0.6;
-        }
-        .preset-img:hover { opacity: 1; transform: scale(1.05); }
-        .preset-img.active { opacity: 1; border-color: #ffaa00; box-shadow: 0 0 10px rgba(255, 170, 0, 0.5); }
-
-        /* 右上角与右下角控件 */
-        .action-group {
-            position: absolute; top: 20px; right: 20px; z-index: 20;
-            display: flex; flex-direction: column; gap: 10px;
-            /* 让组内元素右边缘对齐 */
-            align-items: flex-end;
-        }
-        .btn {
-            background: rgba(15, 15, 20, 0.7); color: white; border: 1px solid rgba(255, 170, 0, 0.5);
-            padding: 10px 18px; border-radius: 50px; font-size: 14px; cursor: pointer;
-            backdrop-filter: blur(10px); transition: all 0.3s ease; display: flex; align-items: center; justify-content: center;
-        }
-        .btn.primary { background: linear-gradient(135deg, #ff8800, #ffaa00); border: none; box-shadow: 0 4px 15px rgba(255, 170, 0, 0.4); }
-        .btn:hover { transform: scale(1.05); }
-        #imageUpload { display: none; }
-
-        #video-container {
-            position: absolute; bottom: 20px; right: 20px; width: 160px; height: 120px;
-            border-radius: 12px; overflow: hidden; border: 2px solid rgba(255, 170, 0, 0.5);
-            transform: scaleX(-1); background: #111; box-shadow: 0 4px 15px rgba(255, 170, 0, 0.2); z-index: 10;
-        }
-        #webcam-video { width: 100%; height: 100%; object-fit: cover; }
-
-        /* 加载与弹窗 */
-        .loader {
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: #ffaa00; text-align: center; z-index: 100; background: rgba(0,0,0,0.8);
-            padding: 30px; border-radius: 20px; backdrop-filter: blur(5px); display: none;
-        }
-        .loader-spinner {
-            border: 4px solid rgba(255, 170, 0, 0.1); border-left-color: #ffaa00;
-            border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto 15px;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        .modal-overlay {
-            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(8px); z-index: 999;
-            justify-content: center; align-items: center; flex-direction: column;
-        }
-        .qr-card { background: white; padding: 30px; border-radius: 20px; text-align: center; color: #333; }
-        .warning-text { color: #d93025; font-size: 12px; margin-top: 15px; background: #fce8e6; padding: 10px; border-radius: 8px; display: none; }
-
-        /* 返回按钮样式 - 与首页风格一致 */
-        .back-nav {
-            position: relative;
-            /* 放在 action-group 内部时，不再做额外位移，避免与下方按钮错位/重叠 */
-            top: 0;
-            right: 0;
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Inter', sans-serif; }
+        canvas { display: block; }
+        
+        /* --- Back to Portal Button Styles --- */
+        .top-right-container {
+            position: absolute;
+            top: 25px;
+            right: 25px;
             z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
             pointer-events: auto;
-            /* 与下方按钮留出间距 */
-            margin-bottom: 10px;
         }
-
         .back-button {
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 12px 24px;
-            background: rgba(15, 15, 20, 0.6);
-            backdrop-filter: blur(15px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 50px;
-            color: rgba(255, 255, 255, 0.8);
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: 300;
-            letter-spacing: 1.5px;
-            transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
-            cursor: pointer;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-        }
-
-        .back-button:hover {
             background: rgba(255, 255, 255, 0.1);
-            color: #fff;
-            border-color: rgba(255, 255, 255, 0.4);
-            transform: translateY(-2px);
-            box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 13px;
+            text-decoration: none;
+            letter-spacing: 1px;
         }
-
-        .back-button svg {
-            transition: transform 0.3s ease;
-        }
-
-        .back-button:hover svg {
+        .back-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
             transform: translateX(-5px);
         }
 
-        /* 新增：手机端“扫码上传图片”页面（仅在 role=sender 时显示） */
-        #mobileUploadPage {
+        /* --- UI Layer Styles --- */
+        #instructions {
+            position: absolute;
+            top: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.5);
+            text-align: center;
+            pointer-events: none;
+            font-size: 11px;
+            letter-spacing: 2px;
+            z-index: 10;
+        }
+        #ui-layer {
+            position: absolute;
+            bottom: 25px;
+            left: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 10;
+        }
+        .library-group {
+            display: flex;
+            gap: 8px;
+        }
+        input[type="file"] { display: none; }
+        .btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 8px 18px;
+            border-radius: 20px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: 0.3s;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .btn:hover { background: rgba(255, 255, 255, 0.25); border-color: rgba(255,255,255,0.5); }
+        .preset-btn { background: rgba(100, 100, 255, 0.2); }
+
+        /* --- Scan Upload Modal / Mobile Sender Page (added) --- */
+        .modal-overlay{
             display: none;
             position: fixed;
             inset: 0;
             z-index: 9999;
-            background: radial-gradient(circle at top, rgba(255,170,0,0.12), rgba(3,3,5,1) 55%);
-            color: #fff;
+            background: rgba(0,0,0,0.75);
+            backdrop-filter: blur(10px);
             align-items: center;
             justify-content: center;
             padding: 24px;
             box-sizing: border-box;
+        }
+        .qr-card{
+            background: rgba(255,255,255,0.95);
+            color: #111;
+            border-radius: 18px;
+            padding: 22px 20px;
+            width: min(360px, 100%);
+            text-align: center;
+            box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+            position: relative;
+        }
+        .qr-close-x{
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 32px;
+            height: 32px;
+            border-radius: 16px;
+            border: 1px solid rgba(0,0,0,0.08);
+            background: rgba(0,0,0,0.04);
+            color: rgba(0,0,0,0.65);
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 30px;
+            padding: 0;
+        }
+        .qr-close-x:hover{ background: rgba(0,0,0,0.08); color: rgba(0,0,0,0.85); }
+        .qr-title{ font-size: 14px; letter-spacing: 1px; margin: 0 0 8px 0; }
+        .qr-sub{ font-size: 12px; color: rgba(0,0,0,0.6); line-height: 1.5; margin-bottom: 12px; }
+        .qr-warning{
+            display: none;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #b42318;
+            background: #fee4e2;
+            padding: 8px 10px;
+            border-radius: 10px;
+        }
+        #uploadStatus{ font-size: 12px; color: rgba(0,0,0,0.7); min-height: 16px; }
+        #mobileUploadPage{
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: radial-gradient(circle at top, rgba(100, 100, 255, 0.15), rgba(0,0,0,1) 60%);
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            box-sizing: border-box;
+            color: #fff;
             text-align: center;
         }
-        #mobileUploadCard {
+        #mobileUploadCard{
             width: min(420px, 100%);
-            background: rgba(15, 15, 20, 0.75);
-            border: 1px solid rgba(255, 170, 0, 0.35);
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
             border-radius: 18px;
-            padding: 22px;
-            backdrop-filter: blur(12px);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+            padding: 20px;
+            backdrop-filter: blur(14px);
         }
-        #mobileUploadCard h2 { margin: 0 0 10px 0; font-size: 18px; color: #ffaa00; }
-        #mobileUploadHint { font-size: 13px; color: rgba(255,255,255,0.78); line-height: 1.55; margin-bottom: 16px; }
-        #mobileUploadStatus { font-size: 13px; margin-top: 14px; color: rgba(255,255,255,0.85); }
-        #mobileImageUpload { display: none; }
-        #mobilePickBtn { width: 100%; }
+        #mobileUploadCard h2{ margin: 0 0 10px 0; font-size: 16px; letter-spacing: 1px; }
+        #mobileUploadHint{ font-size: 12px; color: rgba(255,255,255,0.75); line-height: 1.55; margin-bottom: 14px; }
+        #mobileUploadStatus{ font-size: 12px; margin-top: 12px; color: rgba(255,255,255,0.85); }
+        #mobileImageUpload{ display: none; }
 
-        @media (max-width: 768px) {
-            #ui-overlay { transform: scale(0.85); transform-origin: top left; }
-            .action-group { flex-direction: row; top: auto; bottom: 150px; right: 20px; }
-        }
+        /* Push the lil-gui down so it doesn't cover the back button */
+        .lil-gui.root { margin-top: 130px !important; }
     </style>
 </head>
 <body>
 
-    <div id="loader" class="loader"><div class="loader-spinner"></div><p id="loader-text">正在处理...</p></div>
-
-    <div class="modal-overlay" id="qrModal">
-        <div class="qr-card">
-            <h3>手机扫码体验</h3><div id="qrcode" style="margin: 20px auto; display: flex; justify-content: center;"></div>
-            <div id="qrWarning" class="warning-text">⚠️ 需 HTTPS 环境才可调起手机摄像头。</div>
-            <button style="padding: 8px 24px; margin-top: 15px; border-radius: 20px; border:none; cursor:pointer;" onclick="document.getElementById('qrModal').style.display='none'">关闭</button>
-        </div>
-    </div>
-
-    <!-- 新增：扫码上传图片弹窗 -->
-    <div class="modal-overlay" id="qrUploadModal">
-        <div class="qr-card">
-            <h3>扫码上传图片</h3>
-            <div style="font-size: 12px; color: #666; line-height: 1.5;">
-                用手机扫码打开后，从手机本地选择图片上传到当前页面。
-            </div>
-            <div id="qrcodeUpload" style="margin: 18px auto 12px auto; display: flex; justify-content: center;"></div>
-            <div id="uploadStatus" style="font-size: 12px; color: #444; line-height: 1.5; min-height: 18px;">等待手机上传…</div>
-            <div id="uploadWarning" class="warning-text" style="display:none;">⚠️ 需联网才可使用扫码上传（通过公共消息中转服务传输图片）</div>
-            <button style="padding: 8px 24px; margin-top: 15px; border-radius: 20px; border:none; cursor:pointer;" onclick="closeUploadModal()">关闭</button>
-        </div>
-    </div>
-
-    <!-- 新增：手机端上传页面（仅扫码链接打开时显示） -->
-    <div id="mobileUploadPage">
-        <div id="mobileUploadCard">
-            <h2>上传图片到大屏</h2>
-            <div id="mobileUploadHint">
-                点击下方按钮选择一张手机本地图片，上传完成后大屏会自动生成 3D 粒子模型。
-            </div>
-            <button class="btn primary" id="mobilePickBtn" onclick="document.getElementById('mobileImageUpload').click()">选择图片并上传</button>
-            <input type="file" id="mobileImageUpload" accept="image/png, image/jpeg, image/jpg">
-            <div id="mobileUploadStatus">等待选择图片…</div>
-        </div>
-    </div>
-
-    <div class="action-group">
-        <!-- <button class="btn" onclick="window.location.href='index.html'">返回首页</button> -->
-        <!-- 返回首页按钮（作为第一个元素，确保在最上方） -->
+    <div class="top-right-container">
         <nav class="back-nav">
             <a href="index.html" class="back-button">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="19" y1="12" x2="5" y2="12"></line>
                     <polyline points="12 19 5 12 12 5"></polyline>
                 </svg>
-                <span>返回门户</span>
+                <span>返回首页</span>
             </a>
         </nav>
-        <button class="btn" id="musicBtn" onclick="toggleMusic()">播放音乐</button>
-        <!-- <button class="btn" onclick="showQRModal()">手机扫码</button> -->
-        <!-- 新增：扫码上传图片 -->
-        <button class="btn" onclick="showUploadQRModal()">扫码上传图片</button>
-        <button class="btn primary" onclick="document.getElementById('imageUpload').click()">本地上传图片</button>
-        <input type="file" id="imageUpload" accept="image/png, image/jpeg, image/jpg">
+        <button class="btn" id="qrUploadBtn" onclick="showUploadQRModal()">扫码上传图片</button>
     </div>
 
-    <div id="ui-overlay">
-        <div class="status-card">
-            <h2 style="margin: 0 0 15px 0; color: #ffaa00; font-size: 18px;">全息控制器</h2>
-            <div class="status-item"><span>手势:</span> <span class="status-value" id="gesture-type">等待中...</span></div>
-            <div class="status-item"><span>距离:</span> <span class="status-value" id="zoom-speed">0</span></div>
-            <div class="status-item"><span>角度:</span> <span class="status-value" id="rotation-val">0°</span></div>
-
-            <div style="margin-top: 20px;">
-                <div class="gallery-title">内置全息图库</div>
-                <div class="preset-container" id="preset-gallery">
-                    </div>
-            </div>
+    <!-- Scan Upload Modal (added) -->
+    <div class="modal-overlay" id="qrUploadModal" onclick="closeUploadModal()">
+        <div class="qr-card" onclick="event.stopPropagation()">
+            <button class="qr-close-x" onclick="closeUploadModal()" aria-label="关闭">×</button>
+            <h3 class="qr-title">扫码上传图片</h3>
+            <div class="qr-sub">用手机扫码打开后，从手机本地选择图片上传到当前页面。</div>
+            <div id="qrcodeUpload" style="margin: 10px auto 10px auto; display:flex; justify-content:center;"></div>
+            <div id="uploadStatus">等待手机上传…</div>
+            <div id="uploadWarning" class="qr-warning">⚠️ 需联网才可使用扫码上传（通过公共消息中转服务传输图片）。</div>
+            <button class="btn" style="margin-top: 14px;" onclick="closeUploadModal()">关闭</button>
         </div>
     </div>
 
-    <div id="video-container"><video id="webcam-video" autoplay playsinline></video></div>
-    <div id="canvas-container"></div>
-    <audio id="bgm" loop><source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg"></audio>
+    <!-- Mobile Sender Page (added) -->
+    <div id="mobileUploadPage">
+        <div id="mobileUploadCard">
+            <h2>上传图片到大屏</h2>
+            <div id="mobileUploadHint">点击下方按钮选择一张手机本地图片，上传完成后大屏会自动更新 3D 粒子模型。</div>
+            <button class="btn" style="width: 100%;" onclick="document.getElementById('mobileImageUpload').click()">选择图片并上传</button>
+            <input type="file" id="mobileImageUpload" accept="image/*">
+            <div id="mobileUploadStatus">等待选择图片…</div>
+        </div>
+    </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <div id="instructions">HOLD MOUSE TO ASSEMBLE • RELEASE TO SCATTER<br>长按鼠标聚拢 • 松开恢复</div>
+    
+    <div id="ui-layer">
+        <div class="library-group" id="presetLibrary">
+            <div class="btn preset-btn" data-url="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&auto=format">PRESET 1</div>
+            <div class="btn preset-btn" data-url="https://images.unsplash.com/photo-1550684848-fac1c5b4e853?w=500&auto=format">PRESET 2</div>
+            <div class="btn preset-btn" data-url="https://images.unsplash.com/photo-1557683316-973673baf926?w=500&auto=format">PRESET 3</div>
+        </div>
+        <label class="btn">
+            UPLOAD YOUR OWN
+            <input type="file" id="imageLoader" accept="image/*">
+        </label>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <!-- 新增：用于扫码上传图片的 MQTT 客户端（纯前端，无需改动后端） -->
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
-    <script type="importmap">{"imports": {"three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js"}}</script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm"
+            }
+        }
+    </script>
 
     <script type="module">
         import * as THREE from 'three';
-
-        // --- 预设图像数据 ---
-        const PRESETS = [
-            { id: 'cat', url: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80' },
-            { id: 'statue', url: 'https://images.unsplash.com/photo-1618666012174-83b441c0bc76?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80' },
-            { id: 'neon', url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80' },
-            { id: 'flower', url: 'https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?q=80&w=627&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'}
-        ];
-
-        const isMobile = window.innerWidth < 768;
-        const MODEL_PARTICLES = isMobile ? 60000 : 120000;
-        const RING_PARTICLES = isMobile ? 2500 : 5000;
-        const MIN_CAMERA_DIST = 20; const MAX_CAMERA_DIST = 120;
-
-        let scene, camera, renderer, mainGroup, modelParticles, ring1, ring2, videoElement, hands;
-        let currentDistance = 60, targetRotation = 0, currentRotation = 0;
-
-        // 音乐控制
-        let isPlaying = false;
-        window.toggleMusic = function() {
-            const bgm = document.getElementById('bgm');
-            const btn = document.getElementById('musicBtn');
-            if (isPlaying) { bgm.pause(); btn.innerText = "播放音乐"; btn.style.background = "rgba(15, 15, 20, 0.7)"; }
-            else { bgm.play(); btn.innerText = "暂停音乐"; btn.style.background = "rgba(255, 170, 0, 0.3)"; }
-            isPlaying = !isPlaying;
-        };
-
-        window.showQRModal = function() {
-            const m = document.getElementById('qrModal'); const q = document.getElementById('qrcode');
-            q.innerHTML = ''; const url = window.location.href;
-            new QRCode(q, { text: url, width: 160, height: 160, colorDark : "#000", colorLight : "#fff" });
-            document.getElementById('qrWarning').style.display = (url.startsWith('http://') && !url.includes('localhost')) ? 'block' : 'none';
-            m.style.display = 'flex';
-        };
+        import { GUI } from 'lil-gui';
 
         // ==============================
-        // 新增：扫码上传图片（不改动现有模型/交互逻辑，只复用 build3DModelFromImage）
+        // 扫码上传图片（added；复用现有 createSystem/img 逻辑，不改动模型生成方式）
         // ==============================
         const MQTT_BROKER_URL = 'wss://broker.emqx.io:8084/mqtt';
         const MQTT_TOPIC_PREFIX = 'solo-holo-upload/v1/';
-        // base64 字符串分片大小（过大时更容易在移动网络下丢包/阻塞）
+        // base64 分片大小：过大更易在移动网络下丢包/阻塞，导致接收端卡在 79% 等进度
         const UPLOAD_CHUNK_SIZE = 18000;
-
         let uploadReceiver = null;
 
         function genSessionId() {
@@ -317,7 +264,7 @@
 
         window.closeUploadModal = function() {
             document.getElementById('qrUploadModal').style.display = 'none';
-            // 关闭弹窗时，停止本次接收会话，避免占用连接与误收消息
+            // 关闭弹窗时停止接收会话，避免后台占用连接与误收消息
             if (uploadReceiver && uploadReceiver.client) {
                 try { uploadReceiver.client.end(true); } catch (e) {}
             }
@@ -333,10 +280,9 @@
 
             const sessionId = genSessionId();
             const url = buildUploadUrl(sessionId);
-            new QRCode(q, { text: url, width: 180, height: 180, colorDark : "#000", colorLight : "#fff" });
+            new QRCode(q, { text: url, width: 180, height: 180, colorDark: "#000", colorLight: "#fff" });
             modal.style.display = 'flex';
 
-            // 启动接收端监听（桌面端当前页）
             startUploadReceiver(sessionId).catch((err) => {
                 console.error(err);
                 setUploadStatus('启动接收失败，请检查网络。');
@@ -346,14 +292,12 @@
 
         async function connectMqttClient(clientId) {
             if (!window.mqtt || !window.mqtt.connect) throw new Error('mqtt 库未加载');
-
             const client = window.mqtt.connect(MQTT_BROKER_URL, {
                 clientId,
                 clean: true,
                 reconnectPeriod: 1500,
                 connectTimeout: 8000
             });
-
             await new Promise((resolve, reject) => {
                 const onConnect = () => { cleanup(); resolve(); };
                 const onError = (e) => { cleanup(); reject(e); };
@@ -364,37 +308,26 @@
                 client.on('connect', onConnect);
                 client.on('error', onError);
             });
-
             return client;
         }
 
         async function mqttPublish(client, topic, payload) {
             return new Promise((resolve, reject) => {
-                // 使用 QoS 1 提升可靠性，避免第二次/多次上传时丢分片导致进度卡住
+                // QoS 1 提升可靠性，避免分片丢失导致进度卡住
                 client.publish(topic, payload, { qos: 1 }, (err) => err ? reject(err) : resolve());
             });
         }
 
         async function startUploadReceiver(sessionId) {
-            // 若已存在接收会话，先清理
             if (uploadReceiver && uploadReceiver.client) {
                 try { uploadReceiver.client.end(true); } catch (e) {}
             }
 
             setUploadStatus('正在建立连接…');
             const topic = MQTT_TOPIC_PREFIX + sessionId;
-            const client = await connectMqttClient('holo-receiver-' + genSessionId());
+            const client = await connectMqttClient('mouse-receiver-' + genSessionId());
 
-            uploadReceiver = {
-                sessionId,
-                topic,
-                client,
-                meta: null,
-                chunks: null,
-                received: 0,
-                startedAt: Date.now()
-            };
-
+            uploadReceiver = { sessionId, topic, client, meta: null, chunks: null, received: 0, lastMessageAt: 0 };
             client.subscribe(topic, { qos: 1 });
 
             client.on('message', async (_topic, message) => {
@@ -410,7 +343,7 @@
                     uploadReceiver.received = 0;
                     setUploadStatus(`已连接，开始接收：${data.name || '图片'}…`);
 
-                    // 简单超时保护：若长时间未收齐分片，提示用户重试，避免一直卡在某个百分比
+                    // 超时保护：长时间未收齐分片则提示重试，避免一直卡在某个百分比
                     const timeoutMs = 20000;
                     const mySessionId = uploadReceiver.sessionId;
                     setTimeout(() => {
@@ -438,17 +371,17 @@
                         const pct = Math.floor((uploadReceiver.received / total) * 100);
                         setUploadStatus(`接收中… ${pct}%`);
                     }
+
                     if (uploadReceiver.received === uploadReceiver.chunks.length) {
                         const dataUrl = uploadReceiver.chunks.join('');
                         setUploadStatus('接收完成，正在生成 3D 粒子模型…');
                         await handleIncomingImageDataUrl(dataUrl);
-                        // 不在此处断开连接：允许同一次扫码会话连续上传多张图片（解决第二次上传卡住/无响应问题）
+                        // 不在此处断开连接：允许同一次扫码会话连续上传多张图片
                         setUploadStatus('完成 ✅（可继续上传）');
                         uploadReceiver.meta = null;
                         uploadReceiver.chunks = null;
                         uploadReceiver.received = 0;
                     }
-                    return;
                 }
             });
 
@@ -456,25 +389,22 @@
         }
 
         async function handleIncomingImageDataUrl(dataUrl) {
-            document.querySelectorAll('.preset-img').forEach(el => el.classList.remove('active')); // 取消内置图高亮
-            document.getElementById('loader').style.display = 'block';
-            document.getElementById('loader-text').innerText = "处理您的照片...";
-            await build3DModelFromImage(dataUrl);
-            document.getElementById('loader').style.display = 'none';
+            const img = new Image();
+            await new Promise((resolve) => {
+                img.onload = () => resolve();
+                img.src = dataUrl;
+            });
+            createSystem(img);
         }
 
         function renderMobileSenderUI(sessionId) {
-            // 隐藏原页面元素（仅 role=sender 时）
-            const ag = document.querySelector('.action-group');
-            if (ag) ag.style.display = 'none';
-            const ui = document.getElementById('ui-overlay');
+            // 仅在手机端上传页面：隐藏原 UI
+            const top = document.querySelector('.top-right-container');
+            if (top) top.style.display = 'none';
+            const inst = document.getElementById('instructions');
+            if (inst) inst.style.display = 'none';
+            const ui = document.getElementById('ui-layer');
             if (ui) ui.style.display = 'none';
-            const vc = document.getElementById('video-container');
-            if (vc) vc.style.display = 'none';
-            const cc = document.getElementById('canvas-container');
-            if (cc) cc.style.display = 'none';
-            const loader = document.getElementById('loader');
-            if (loader) loader.style.display = 'none';
 
             const page = document.getElementById('mobileUploadPage');
             page.style.display = 'flex';
@@ -498,7 +428,7 @@
                 const topic = MQTT_TOPIC_PREFIX + sessionId;
                 let client;
                 try {
-                    client = await connectMqttClient('holo-sender-' + genSessionId());
+                    client = await connectMqttClient('mouse-sender-' + genSessionId());
                 } catch (err) {
                     console.error(err);
                     status.innerText = '连接失败，请检查网络后重试。';
@@ -521,13 +451,12 @@
                         await mqttPublish(client, topic, JSON.stringify({ t: 'chunk', idx: i, data: chunk }));
                         const pct = Math.floor(((i + 1) / totalChunks) * 100);
                         status.innerText = `上传中… ${pct}%`;
-                        // 轻微让出主线程，避免移动端页面卡顿
                         await new Promise(r => setTimeout(r, 5));
                     }
 
                     status.innerText = '上传完成 ✅ 你可以返回大屏查看效果。';
                     try {
-                        // QoS1 下 publish 回调已收到 PUBACK，但给一点缓冲，避免移动端弱网下被强制断开
+                        // QoS1 下 publish 回调已拿到 PUBACK；弱网下给一点缓冲，避免最后分片未送达
                         await new Promise(r => setTimeout(r, 200));
                         client.end(false);
                     } catch (e) {}
@@ -536,178 +465,184 @@
                     status.innerText = '上传失败，请重试。';
                     try { client.end(false); } catch (e) {}
                 } finally {
-                    // 允许用户连续选择同一文件触发第二次上传
+                    // 允许用户连续选择同一文件也能触发再次上传
                     input.value = '';
                 }
             });
         }
 
-        async function init() {
-            document.getElementById('loader').style.display = 'block';
-            document.getElementById('loader-text').innerText = "加载 3D 引擎...";
+        const state = {
+            particleSize: 0.025,
+            systemScale: 0.035,
+            scatterRange: 12,
+            rotationSpeed: 0.005,
+            autoRotate: false,
+            panelWidth: 180,
+            tint: '#ffffff'
+        };
 
-            scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x030305, 0.005);
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        let scene, camera, renderer, particles, geometry, material, gui;
+        let isPressed = false;
+
+        // 若扫码链接带 role=sender，则显示手机端上传页；否则按原逻辑初始化
+        (() => {
+            const params = new URLSearchParams(window.location.search);
+            const sessionId = params.get('uploadSession');
+            const role = params.get('role');
+            if (sessionId && role === 'sender') renderMobileSenderUI(sessionId);
+            else init();
+        })();
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 6;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            document.getElementById('canvas-container').appendChild(renderer.domElement);
-            mainGroup = new THREE.Group(); scene.add(mainGroup);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
 
-            initGalleryUI();
-            createRings();
-            createBackgroundStars();
+            gui = new GUI({ title: 'Controls' });
+            gui.width = state.panelWidth;
+            gui.addColor(state, 'tint').name('Color Tint').onChange(v => material.color.set(v));
+            gui.add(state, 'particleSize', 0.005, 0.1).name('Size');
+            gui.add(state, 'scatterRange', 2, 30).name('Scatter');
+            gui.add(state, 'autoRotate').name('Auto Spin');
 
-            // 默认加载第一张图
-            await build3DModelFromImage(PRESETS[0].url);
+            window.addEventListener('mousedown', () => isPressed = true);
+            window.addEventListener('mouseup', () => isPressed = false);
+            window.addEventListener('touchstart', (e) => { isPressed = true; }, {passive: true});
+            window.addEventListener('touchend', () => isPressed = false);
 
-            document.getElementById('loader-text').innerText = "启动摄像头...";
-            setupMediaPipe();
-            setupImageUpload();
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    loadFromURL(e.target.dataset.url);
+                });
+            });
+
+            document.getElementById('imageLoader').addEventListener('change', handleUpload);
+            window.addEventListener('resize', onResize);
+
+            loadFromURL(document.querySelector('.preset-btn').dataset.url);
+
             animate();
         }
 
-        // 初始化预设图库UI
-        function initGalleryUI() {
-            const container = document.getElementById('preset-gallery');
-            PRESETS.forEach((preset, index) => {
-                const img = document.createElement('img');
-                img.src = preset.url;
-                img.className = index === 0 ? 'preset-img active' : 'preset-img';
-                img.onclick = async () => {
-                    // 更新UI高亮
-                    document.querySelectorAll('.preset-img').forEach(el => el.classList.remove('active'));
-                    img.classList.add('active');
-                    // 加载模型
-                    document.getElementById('loader').style.display = 'block';
-                    document.getElementById('loader-text').innerText = "构建全息图像...";
-                    await build3DModelFromImage(preset.url);
-                    document.getElementById('loader').style.display = 'none';
-                };
-                container.appendChild(img);
-            });
+        function loadFromURL(url) {
+            const img = new Image();
+            img.crossOrigin = "Anonymous";
+            img.onload = () => createSystem(img);
+            img.src = url;
         }
 
-        async function build3DModelFromImage(imageUrl) {
-            return new Promise((resolve) => {
-                const loader = new THREE.ImageLoader(); loader.setCrossOrigin('anonymous');
-                loader.load(imageUrl, (image) => {
-                    if (modelParticles) { mainGroup.remove(modelParticles); modelParticles.geometry.dispose(); modelParticles.material.dispose(); }
-                    const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d', { willReadFrequently: true });
-                    const aspect = image.width / image.height;
-                    let imgW = 256, imgH = 256;
-                    if (aspect > 1) imgH = Math.floor(256 / aspect); else imgW = Math.floor(256 * aspect);
-                    canvas.width = imgW; canvas.height = imgH; ctx.drawImage(image, 0, 0, imgW, imgH);
-                    const imgData = ctx.getImageData(0, 0, imgW, imgH).data;
-
-                    const positions = []; const colors = []; const scale = 0.15;
-                    for (let i = 0; i < MODEL_PARTICLES; i++) {
-                        const x = Math.floor(Math.random() * imgW); const y = Math.floor(Math.random() * imgH);
-                        const pixelIdx = (y * imgW + x) * 4;
-                        const r = imgData[pixelIdx]/255, g = imgData[pixelIdx+1]/255, b = imgData[pixelIdx+2]/255, a = imgData[pixelIdx+3]/255;
-                        if (r > 0.9 && g > 0.9 && b > 0.9) continue; if (a < 0.1) continue;
-
-                        const px = (x - imgW/2) * scale + (Math.random()-0.5)*0.15;
-                        const py = (imgH/2 - y) * scale + (Math.random()-0.5)*0.15;
-                        const pz = ((0.299*r + 0.587*g + 0.114*b) * 8) - 4 + (Math.random()-0.5)*1.5;
-
-                        positions.push(px, py, pz); colors.push(r*1.5, g*1.5, b*1.5);
-                    }
-                    const geo = new THREE.BufferGeometry();
-                    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-                    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-                    const mat = new THREE.PointsMaterial({ size: isMobile?0.2:0.12, vertexColors: true, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
-                    modelParticles = new THREE.Points(geo, mat); mainGroup.add(modelParticles);
-                    resolve();
-                });
-            });
+        function handleUpload(e) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => createSystem(img);
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(e.target.files[0]);
         }
 
-        function setupImageUpload() {
-            document.getElementById('imageUpload').addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = async (event) => {
-                        document.querySelectorAll('.preset-img').forEach(el => el.classList.remove('active')); // 取消内置图高亮
-                        document.getElementById('loader').style.display = 'block';
-                        document.getElementById('loader-text').innerText = "处理您的照片...";
-                        await build3DModelFromImage(event.target.result);
-                        document.getElementById('loader').style.display = 'none';
-                    };
-                    reader.readAsDataURL(file);
-                }
-            });
-        }
-
-        function createRings() {
-            function create(inner, outer, count, hex) {
-                const geo = new THREE.BufferGeometry(); const pos = [];
-                for (let i=0; i<count; i++) {
-                    const a = Math.random()*Math.PI*2, r = inner+Math.random()*(outer-inner);
-                    pos.push(Math.cos(a)*r, (Math.random()-0.5)*1.5, Math.sin(a)*r);
-                }
-                geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-                return new THREE.Points(geo, new THREE.PointsMaterial({size:0.1, color:hex, transparent:true, opacity:0.4, blending:THREE.AdditiveBlending}));
+        function createSystem(img) {
+            if (particles) { 
+                scene.remove(particles); 
+                geometry.dispose(); 
+                material.dispose(); 
             }
-            ring1 = create(22, 28, RING_PARTICLES, 0xffccaa); ring2 = create(30, 36, RING_PARTICLES/2, 0x88bbff);
-            ring1.rotation.x = Math.PI/2.5; ring2.rotation.x = -Math.PI/3; mainGroup.add(ring1, ring2);
-        }
 
-        function createBackgroundStars() {
-            const geo = new THREE.BufferGeometry(); const pos = [];
-            for(let i=0; i<2000; i++) pos.push((Math.random()-0.5)*400, (Math.random()-0.5)*400, (Math.random()-0.5)*400);
-            geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-            scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.2, color: 0x555566 })));
-        }
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const res = 120; 
+            canvas.width = res;
+            canvas.height = res * (img.height / img.width);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-        function setupMediaPipe() {
-            videoElement = document.getElementById('webcam-video');
-            hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-            hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-            hands.onResults((results) => {
-                const elType = document.getElementById('gesture-type');
-                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                    const lm = results.multiHandLandmarks[0];
-                    const isFist = [8,12,16,20].filter(f => lm[f].y > lm[f-2].y).length >= 3;
-                    targetRotation = Math.atan2(lm[9].y - lm[0].y, lm[9].x - lm[0].x) + Math.PI/2;
+            const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            const positions = [];
+            const colors = [];
+            const homes = [];
+            const scats = [];
 
-                    if(isFist) { elType.innerText = "✊ 握拳"; elType.style.color = "#f44"; currentDistance += Math.pow(currentDistance*0.05, 1.5)*0.1; }
-                    else { elType.innerText = "🖐️ 张开"; elType.style.color = "#4f4"; currentDistance -= (currentDistance - MIN_CAMERA_DIST)*0.08; }
+            for (let y = 0; y < canvas.height; y++) {
+                for (let x = 0; x < canvas.width; x++) {
+                    const i = (y * canvas.width + x) * 4;
+                    if (data[i + 3] > 128) {
+                        const hx = (x - canvas.width / 2) * state.systemScale;
+                        const hy = -(y - canvas.height / 2) * state.systemScale;
+                        const hz = (Math.random() - 0.5) * 0.5;
+                        homes.push(hx, hy, hz);
 
-                    currentDistance = Math.max(MIN_CAMERA_DIST, Math.min(MAX_CAMERA_DIST, currentDistance));
-                    document.getElementById('zoom-speed').innerText = currentDistance.toFixed(1) + " M";
-                    document.getElementById('rotation-val').innerText = Math.round(targetRotation*180/Math.PI) + "°";
-                } else {
-                    elType.innerText = "未检测"; elType.style.color = "#fa0";
+                        const sx = (Math.random() - 0.5) * state.scatterRange;
+                        const sy = (Math.random() - 0.5) * state.scatterRange;
+                        const sz = (Math.random() - 0.5) * state.scatterRange;
+                        scats.push(sx, sy, sz);
+
+                        positions.push(sx, sy, sz);
+                        colors.push(data[i]/255, data[i+1]/255, data[i+2]/255);
+                    }
                 }
+            }
+
+            geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            geometry.setAttribute('home', new THREE.Float32BufferAttribute(homes, 3));
+            geometry.setAttribute('scat', new THREE.Float32BufferAttribute(scats, 3));
+
+            material = new THREE.PointsMaterial({
+                size: state.particleSize,
+                vertexColors: true,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
             });
-            new Camera(videoElement, { onFrame: async () => await hands.send({ image: videoElement }), width: 640, height: 480 })
-                .start().catch(()=>document.getElementById('loader-text').innerText="无摄像头权限");
-            document.getElementById('loader').style.display = 'none';
+
+            particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+        }
+
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            if (mainGroup) mainGroup.rotation.y += 0.0005;
-            if (ring1) { ring1.rotation.z += 0.002; ring2.rotation.z -= 0.0015; }
-            currentRotation += (targetRotation - currentRotation) * 0.1;
-            camera.position.set(Math.sin(currentRotation)*currentDistance, currentDistance*0.1, Math.cos(currentRotation)*currentDistance);
-            camera.lookAt(0,0,0); renderer.render(scene, camera);
-        }
-        window.addEventListener('resize', () => { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
 
-        // 若扫码链接带 role=sender，则显示手机端上传页；否则按原逻辑初始化 3D+手势交互
-        window.onload = () => {
-            const params = new URLSearchParams(window.location.search);
-            const sessionId = params.get('uploadSession');
-            const role = params.get('role');
-            if (sessionId && role === 'sender') {
-                renderMobileSenderUI(sessionId);
-            } else {
-                init();
+            if (particles) {
+                if (state.autoRotate) particles.rotation.y += state.rotationSpeed;
+                material.size = state.particleSize;
+
+                const posAttr = geometry.attributes.position;
+                const homeAttr = geometry.attributes.home;
+                const scatAttr = geometry.attributes.scat;
+
+                const lerpSpeed = isPressed ? 0.12 : 0.05; 
+
+                for (let i = 0; i < posAttr.count; i++) {
+                    const curX = posAttr.getX(i);
+                    const curY = posAttr.getY(i);
+                    const curZ = posAttr.getZ(i);
+
+                    const targetX = isPressed ? homeAttr.getX(i) : scatAttr.getX(i);
+                    const targetY = isPressed ? homeAttr.getY(i) : scatAttr.getY(i);
+                    const targetZ = isPressed ? homeAttr.getZ(i) : scatAttr.getZ(i);
+
+                    posAttr.setXYZ(i, 
+                        curX + (targetX - curX) * lerpSpeed,
+                        curY + (targetY - curY) * lerpSpeed,
+                        curZ + (targetZ - curZ) * lerpSpeed
+                    );
+                }
+                posAttr.needsUpdate = true;
             }
-        };
+
+            renderer.render(scene, camera);
+        }
     </script>
 </body>
 </html>
